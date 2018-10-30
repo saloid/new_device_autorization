@@ -6,6 +6,8 @@
 
 #define USE_SERIAL Serial
 
+const char GET_WIFI_LIST_REQ [] = "{type:\"publish\", topic: \"getWifi\"}";
+
 ESP8266WebServer server(80);
 WebSocketsServer webSocket = WebSocketsServer(81);
 
@@ -26,7 +28,16 @@ void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length
       break;
     case WStype_TEXT:
       {
-        USE_SERIAL.printf("[%u] get Text: %s\n", num, payload);
+        USE_SERIAL.printf("from [%u] get Text: %s\n", num, payload);
+        if (strncmp (GET_WIFI_LIST_REQ, (char *)payload, length) == 0)
+        {
+          USE_SERIAL.printf("Scaning wifi...");
+          webSocket.sendTXT(num, getWifiList().c_str());
+        }
+        else
+        {
+          USE_SERIAL.printf("Unknown text!!!");
+        }
       }
       break;
     default:
@@ -54,11 +65,13 @@ void setup()
   USE_SERIAL.println("\nStart");
 
   USE_SERIAL.print ("Wifi AP starting...");
+  WiFi.setOutputPower(22);
+  WiFi.mode(WIFI_AP_STA);
   USE_SERIAL.println(WiFi.softAP("SSID", "passpasspass") ? "Ready" : "Failed!");
 
   delay(500);
-  webSocket.onEvent(webSocketEvent);
   webSocket.begin();
+  webSocket.onEvent(webSocketEvent);
 
   if (MDNS.begin("esp8266"))
   {
@@ -90,4 +103,32 @@ void loop()
     USE_SERIAL.printf("Clients num: wifi=%d, websocket=%d\n", WiFi.softAPgetStationNum(), webSocket.connectedClients());
     lastStatusPrintTime = currentTime;
   }
+}
+
+String getWifiList (void)
+{
+  String jsonString = "{\"wifi\":{";
+  const String jsonEnd = "}}";
+  uint8_t wifiNum;
+
+  wifiNum = WiFi.scanNetworks();
+  USE_SERIAL.printf("Wifi num: %d\n", wifiNum);
+
+  for (uint8_t i = 0; i < wifiNum; i++)
+  {
+    jsonString += "\"" + String(i) + "\":{";
+    jsonString += "\"SSID\":\"" + WiFi.SSID(i) + "\",";
+    jsonString += "\"RSSI\":\"" + String(WiFi.RSSI(i)) + "\",";
+    jsonString += "\"encryption\":\"" + String(WiFi.encryptionType(i)) + "\"";
+    jsonString += "}";
+    if ((i + 1) != wifiNum)
+    {
+      jsonString += ",";
+    }
+  }
+
+  jsonString += jsonEnd;
+  USE_SERIAL.println(jsonString);
+
+  return (jsonString);
 }
